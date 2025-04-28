@@ -151,7 +151,8 @@
       {% if project_applications[project.id] %}
         <div class="applicant-list">
           {% for applicant in project_applications[project.id] %}
-            <p>{{ applicant.username }} - Match Score: {{ applicant.match_score }}%</p>
+            <p>{{ applicant.username }} - Match Score: {{ applicant.match_score}}%</p>
+            <p>Email: {{ applicant.email }}</p>
           {% endfor %}
         </div>
       {% else %}

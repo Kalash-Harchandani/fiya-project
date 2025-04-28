@@ -79,7 +79,7 @@ def dashboard():
             applicants = []
             for app in applications:
                 contributor = User.query.get(app.contributor_id)
-                applicants.append({'username': contributor.username, 'match_score': app.match_score})
+                applicants.append({'username': contributor.username, 'email':contributor.email,'match_score': app.match_score})
             project_applications[project.id] = applicants
 
         return render_template('dashboard_leader.html', projects=projects, project_applications=project_applications)
@@ -116,31 +116,73 @@ def create_project():
 
     return render_template('create_project.html')
 
-@app.route('/project/<int:project_id>/apply', methods=['POST'])
+@app.route('/project/<int:project_id>/apply', methods=['GET','POST'])
 @login_required
 def apply_project(project_id):
-    if current_user.role != 'contributor':
-        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        if current_user.role != 'contributor':
+            return redirect(url_for('dashboard'))
+        project = Project.query.get_or_404(project_id)
+        existing = Application.query.filter_by(contributor_id=current_user.id, project_id=project_id).first()
+        if existing:
+            flash('You already applied to this project.', 'warning')
+            return redirect(url_for('dashboard'))
+        else:
+            # cgpa, extra_curricular_level, hours_per_week, same_location, interest_level
+            cgpa = request.form.get('cgpa')
+            if cgpa == None:
+                return render_template('apply_project.html')
+            cgpa = float(cgpa)
+            extra_curricular_level = request.form.get('extra_curricular')
+            if extra_curricular_level == None:
+                return render_template('apply_project.html')
+            hours_per_week = request.form.get('hours_per_week')
+            if hours_per_week == None:
+                return render_template('apply_project.html')
+            hours_per_week = float(hours_per_week)
+            same_location = request.form.get('location')
+            if same_location == None:
+                return render_template('apply_project.html')
+            interest_level = request.form.get('interest_level')
+            if interest_level == None:
+                return render_template('apply_project.html')
+            interest_level = float(interest_level)
+            print(extra_curricular_level,cgpa,hours_per_week,same_location,interest_level)
+            score = calculate_match_score(cgpa,extra_curricular_level,hours_per_week,same_location,interest_level)
+            application = Application(
+                contributor_id=current_user.id,
+                project_id=project_id,
+                match_score=score
+            )
+            print(score)
+            db.session.add(application)
+            db.session.commit()
 
-    project = Project.query.get_or_404(project_id)
+    return render_template('apply_project.html')
 
-    existing = Application.query.filter_by(contributor_id=current_user.id, project_id=project_id).first()
-    if existing:
-        flash('You already applied to this project.', 'warning')
-        return redirect(url_for('dashboard'))
 
-    score = calculate_match_score(current_user, project)
+    # if current_user.role != 'contributor':
+    #     return redirect(url_for('dashboard'))
 
-    application = Application(
-        contributor_id=current_user.id,
-        project_id=project_id,
-        match_score=score
-    )
-    db.session.add(application)
-    db.session.commit()
+    # project = Project.query.get_or_404(project_id)
 
-    flash(f'Applied to "{project.title}" with a match score of {score}%', 'success')
-    return redirect(url_for('dashboard'))
+    # existing = Application.query.filter_by(contributor_id=current_user.id, project_id=project_id).first()
+    # if existing:
+    #     flash('You already applied to this project.', 'warning')
+    #     return redirect(url_for('dashboard'))
+
+    # score = calculate_match_score(current_user, project)
+
+    # application = Application(
+    #     contributor_id=current_user.id,
+    #     project_id=project_id,
+    #     match_score=score
+    # )
+    # db.session.add(application)
+    # db.session.commit()
+
+    # flash(f'Applied to "{project.title}" with a match score of {score}%', 'success')
+    # return redirect(url_for('dashboard'))
 
 @app.route('/project/<int:project_id>/delete', methods=['POST'])
 @login_required
@@ -193,8 +235,50 @@ def view_applicants(project_id):
 
     return render_template('view_applicants.html', project=project, applicants=applicants)
 
-def calculate_match_score(contributor, project):
-    return 85  # Replace with real logic
+def calculate_match_score(cgpa, extra_curricular_level, hours_per_week, same_location, interest_level):
+    score = 0
+
+    # 1. CGPA Scoring
+    if cgpa >= 9.0:
+        score += 30  # 25 + 5 bonus
+    elif cgpa >= 7.5:
+        score += 25
+    else:
+        score += (cgpa / 10) * 25
+
+    # 2. Extra Curricular Scoring
+    extra_curricular_scores = {
+        'Beginner': 8,
+        'Intermediate': 14,
+        'Advanced': 20
+    }
+    score += extra_curricular_scores.get(extra_curricular_level, 0)
+
+    # 3. Hours per Week Scoring
+    if hours_per_week >= 10:
+        score += 20
+    elif 8 <= hours_per_week < 10:
+        score += 14
+    elif 6 <= hours_per_week < 8:
+        score += 8
+    else:
+        score += 0
+
+    # 4. Location Scoring
+    if same_location.lower() == 'yes':
+        score += 10
+    elif same_location.lower() == 'remote':
+        score += 8
+    else:
+        score += 0
+
+    # 5. Interest Level Scoring
+    if 1 <= interest_level <= 10:
+        score += (interest_level / 10) * 25
+    else:
+        score += 0
+
+    return round(score, 2)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True,port=5050)
